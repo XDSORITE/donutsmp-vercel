@@ -1,4 +1,7 @@
 export default async function handler(req, res) {
+  // Allow cross-origin requests from anywhere (for testing)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
   const { username } = req.query;
 
   if (!username) {
