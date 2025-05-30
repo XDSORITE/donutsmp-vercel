@@ -1,9 +1,13 @@
 export default async function handler(req, res) {
-  // Allow cross-origin requests from anywhere (for testing)
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
   const { username } = req.query;
-
   if (!username) {
     return res.status(400).json({ error: "Username is required" });
   }
