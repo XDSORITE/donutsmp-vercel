@@ -10,14 +10,24 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const text = await response.text();
-      console.error("Fetch failed with status", response.status, "and body:", text);
-      return res.status(500).json({ error: "Failed to fetch auction data: bad response." });
+      console.error("Fetch failed:", text);
+      return res.status(500).send("Error: bad response from API.");
     }
 
     const data = await response.json();
-    res.status(200).json({ transactions: data.transactions || [] });
-  } catch (error) {
-    console.error("Fetch error:", error);
-    res.status(500).json({ error: "Failed to fetch auction data." });
+
+    // Turn transaction data into a readable string
+    const transactions = data.transactions || [];
+    const output = transactions.length
+      ? transactions
+          .map((tx, i) => `#${i + 1} | Item: ${tx.item?.name || "Unknown"} | Price: ${tx.price} | User: ${tx.buyer}`)
+          .join("\n")
+      : "No recent transactions.";
+
+    res.setHeader("Content-Type", "text/plain");
+    res.status(200).send(output);
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).send("Error: Could not fetch auctions.");
   }
 }
