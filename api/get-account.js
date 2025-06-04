@@ -1,40 +1,32 @@
-import { Pool } from 'pg'
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false, // Required for Neon
-  },
-})
+import { Client } from "pg"
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Only POST allowed' })
-  }
+  const { username } = req.body
 
-  const { account_id } = req.body
+  if (!username) return res.status(400).json({ error: "Username required" })
 
-  if (!account_id) {
-    return res.status(400).json({ error: 'Missing account_id' })
-  }
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL_UNPOOLED, // Use the unpooled URL for safer connection in serverless
+    ssl: { rejectUnauthorized: false }, // Ensure SSL, optional depending on your setup
+  })
 
   try {
-    const client = await pool.connect()
+    await client.connect()
 
     const result = await client.query(
-      'SELECT account_id, username, password FROM credentials WHERE account_id = $1',
-      [account_id]
+      "SELECT * FROM credentials WHERE username = $1",
+      [username]
     )
 
-    client.release()
-
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Account not found' })
+      return res.status(404).json({ error: "User not found" })
     }
 
     return res.status(200).json(result.rows[0])
-  } catch (err) {
-    console.error('Database error:', err)
-    return res.status(500).json({ error: 'Database error' })
+  } catch (error) {
+    console.error("DB ERROR:", error)
+    return res.status(500).json({ error: "Internal Server Error" })
+  } finally {
+    await client.end()
   }
 }
