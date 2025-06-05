@@ -1,24 +1,24 @@
 // File: /api/login.js
+
 import { Client } from "pg";
 
 export default async function handler(req, res) {
-  // 1) Handle CORS preflight (OPTIONS)
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    // Allow any origin (you can lock this down to your Framer preview domain if you wish)
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     return res.status(200).end();
   }
 
-  // 2) Allow only GET from here onward
+  // Only allow GET requests
   if (req.method !== "GET") {
     res.setHeader("Allow", ["GET", "OPTIONS"]);
     res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // 3) Read username & password from query params
+  // Read username & password from query parameters
   const { username, password } = req.query || {};
   if (!username || !password) {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       .json({ valid: false, error: "Username and password are required" });
   }
 
-  // 4) Connect to your Neon Postgres
+  // Connect to your Neon Postgres database
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
@@ -36,29 +36,31 @@ export default async function handler(req, res) {
   try {
     await client.connect();
 
-    // Query the "credentials" table (your actual table name)
+    // Query for password and account_id from credentials table
     const queryText = `
-      SELECT password
+      SELECT password, account_id
         FROM credentials
        WHERE username = $1
        LIMIT 1
     `;
     const { rows } = await client.query(queryText, [username]);
 
-    // Always send back CORS header on JSON responses
+    // Always include CORS header on JSON responses
     res.setHeader("Access-Control-Allow-Origin", "*");
 
     if (rows.length === 0) {
-      // No matching row
+      // No matching user
       return res
         .status(200)
         .json({ valid: false, error: "Incorrect username or password" });
     }
 
-    const storedPassword = rows[0].password;
-    // (Plaintext check for demo—swap in bcrypt.compare in production)
+    const { password: storedPassword, account_id } = rows[0];
+
+    // Plaintext comparison for demonstration (use hashed passwords in production)
     if (password === storedPassword) {
-      return res.status(200).json({ valid: true });
+      // Return valid: true plus the account_id
+      return res.status(200).json({ valid: true, account_id });
     } else {
       return res
         .status(200)
