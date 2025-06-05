@@ -2,21 +2,32 @@
 import { Client } from "pg";
 
 export default async function handler(req, res) {
-  // Only allow GET
+  // 1) Handle CORS preflight (OPTIONS)
+  if (req.method === "OPTIONS") {
+    // Allow any origin (you can lock this down to your Framer preview domain if you wish)
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    return res.status(200).end();
+  }
+
+  // 2) Allow only GET from here onward
   if (req.method !== "GET") {
-    res.setHeader("Allow", ["GET"]);
+    res.setHeader("Allow", ["GET", "OPTIONS"]);
+    res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // Read username + password from query parameters
+  // 3) Read username & password from query params
   const { username, password } = req.query || {};
   if (!username || !password) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
     return res
       .status(400)
       .json({ valid: false, error: "Username and password are required" });
   }
 
-  // Connect to Neon Postgres using your DATABASE_URL env var
+  // 4) Connect to your Neon Postgres
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
@@ -25,29 +36,27 @@ export default async function handler(req, res) {
   try {
     await client.connect();
 
-    // ◀️ CHANGE HERE: query from "credentials" instead of "users"
-    //
-    // Replace "credentials" and column names if your schema differs.
-    // This example assumes:
-    //   • table name = credentials
-    //   • columns:   username (varchar), password (varchar)
-    //
-    const queryText = `SELECT password 
-                       FROM credentials 
-                       WHERE username = $1 
-                       LIMIT 1`;
+    // Query the "credentials" table (your actual table name)
+    const queryText = `
+      SELECT password
+        FROM credentials
+       WHERE username = $1
+       LIMIT 1
+    `;
     const { rows } = await client.query(queryText, [username]);
 
+    // Always send back CORS header on JSON responses
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
     if (rows.length === 0) {
-      // No matching row in credentials
+      // No matching row
       return res
         .status(200)
         .json({ valid: false, error: "Incorrect username or password" });
     }
 
     const storedPassword = rows[0].password;
-
-    // Plaintext comparison (for demonstration!). In production, hash & compare.
+    // (Plaintext check for demo—swap in bcrypt.compare in production)
     if (password === storedPassword) {
       return res.status(200).json({ valid: true });
     } else {
@@ -57,6 +66,7 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     console.error("Database error:", err);
+    res.setHeader("Access-Control-Allow-Origin", "*");
     return res
       .status(500)
       .json({ valid: false, error: "Internal server error" });
