@@ -1,39 +1,53 @@
-import { Client } from 'pg'
-
-const connectionString = process.env.DATABASE_URL
+// File: /api/login.js
+import { Client } from "pg";
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end()
-
-  const { username, password } = req.body
-
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Missing credentials' })
+  if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } })
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ valid: false, error: "Username and password are required" });
+  }
+
+  // Connect to your Postgres database via the DATABASE_URL env var
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+  });
 
   try {
-    await client.connect()
+    await client.connect();
 
-    const query = `SELECT * FROM credentials WHERE username = $1 AND password = $2`
-    const result = await client.query(query, [username, password])
+    // Replace “users” and column names with your actual table/column names.
+    // This example assumes a table “users” with columns “username” (varchar) and “password” (varchar).
+    const queryText = `SELECT password FROM users WHERE username = $1 LIMIT 1`;
+    const { rows } = await client.query(queryText, [username]);
 
-    if (result.rows.length === 1) {
-      // ✅ Login success, store session flag
-      await client.query(
-        `INSERT INTO sessions (username, sessionActive) VALUES ($1, true)
-         ON CONFLICT (username) DO UPDATE SET sessionActive = true`,
-        [username]
-      )
-      res.status(200).json({ success: true })
+    if (rows.length === 0) {
+      // No user found
+      return res.status(200).json({ valid: false, error: "Incorrect username or password" });
+    }
+
+    const userRecord = rows[0];
+    const storedPassword = userRecord.password;
+
+    // For demonstration: plaintext comparison.
+    // In production, you should store hashed passwords and compare with bcrypt or similar.
+    if (password === storedPassword) {
+      return res.status(200).json({ valid: true });
     } else {
-      res.status(401).json({ success: false, error: 'Invalid credentials' })
+      return res.status(200).json({ valid: false, error: "Incorrect username or password" });
     }
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Server error' })
+    console.error("Database error:", err);
+    return res.status(500).json({ valid: false, error: "Internal server error" });
   } finally {
-    await client.end()
+    await client.end();
   }
 }
