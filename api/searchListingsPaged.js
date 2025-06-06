@@ -1,34 +1,68 @@
-// /api/searchListingsPaged.js
-import { pool } from "../../lib/db" // your DB pool connection
+// File: /api/searchListingsPaged.js
+
+import { Client } from "pg"
 
 export default async function handler(req, res) {
-    try {
-        const { page = "1", pageSize = "15", table = "main", search = "" } = req.query
+  // Always set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type")
 
-        if (!search || search.trim() === "") {
-            return res.status(400).json({ error: "search param is required" })
-        }
+  // Handle preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end()
+  }
 
-        const pageNum = parseInt(page)
-        const sizeNum = parseInt(pageSize)
-        const offset = (pageNum - 1) * sizeNum
+  // Only allow GET
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed. Use GET" })
+  }
 
-        // Count total matching
-        const countResult = await pool.query(
-            `SELECT COUNT(*) FROM ${table} WHERE LOWER(title) LIKE LOWER($1)`,
-            [`%${search}%`]
-        )
-        const total = parseInt(countResult.rows[0].count)
+  // Read page parameter (default = 1)
+  const page = parseInt(req.query.page) || 1
+  const pageSize = 15
+  const offset = (page - 1) * pageSize
 
-        // Get paged matching listings
-        const result = await pool.query(
-            `SELECT id, title, description, price, name FROM ${table} WHERE LOWER(title) LIKE LOWER($1) ORDER BY id DESC LIMIT $2 OFFSET $3`,
-            [`%${search}%`, sizeNum, offset]
-        )
+  // Read search parameter
+  const search = req.query.search || ""
 
-        return res.status(200).json({ listings: result.rows, total })
-    } catch (err) {
-        console.error(err)
-        return res.status(500).json({ error: "Internal server error" })
-    }
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  })
+
+  try {
+    await client.connect()
+
+    // 1️⃣ Get matching rows (paged)
+    const result = await client.query(
+      `SELECT id, "Seller" AS name, "Title" AS title, "Description" AS description, "Price" AS price
+       FROM "public"."marketplace_listings"
+       WHERE "Title" ILIKE $1
+       ORDER BY id DESC
+       LIMIT $2 OFFSET $3`,
+      [`%${search}%`, pageSize, offset]
+    )
+
+    // 2️⃣ Get total matching count (for pagination)
+    const countResult = await client.query(
+      `SELECT COUNT(*) AS count
+       FROM "public"."marketplace_listings"
+       WHERE "Title" ILIKE $1`,
+      [`%${search}%`]
+    )
+
+    const totalCount = parseInt(countResult.rows[0]?.count || "0")
+
+    // Response
+    return res.status(200).json({
+      listings: result.rows,
+      total: totalCount,
+    })
+  } catch (err) {
+    console.error("Database error in searchListingsPaged:", err.message)
+    return res.status(500).json({ error: "Internal server error" })
+  } finally {
+    await client.end()
+  }
 }
