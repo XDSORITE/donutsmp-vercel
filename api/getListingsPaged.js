@@ -3,27 +3,34 @@
 import { Client } from "pg"
 
 export default async function handler(req, res) {
-  // Always set CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
 
-  // Handle preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end()
   }
 
-  // Only allow GET
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed. Use GET" })
   }
 
   const page = parseInt(req.query.page) || 1
   const pageSize = parseInt(req.query.pageSize) || 15
-  const table = req.query.table || "marketplace_listings"
+  const rawTable = req.query.table || "marketplace_listings"
   const search = req.query.search || ""
-
   const offset = (page - 1) * pageSize
+
+  const allowedTables = {
+    marketplace_listings: '"public"."marketplace_listings"',
+    // You can add more allowed tables here if needed
+  }
+
+  const tableSql = allowedTables[rawTable]
+
+  if (!tableSql) {
+    return res.status(400).json({ error: "Invalid table name" })
+  }
 
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
@@ -35,7 +42,7 @@ export default async function handler(req, res) {
 
     const queryText = `
       SELECT id, "Seller" AS name, "Title" AS title, "Description" AS description, "Price" AS price
-      FROM "public"."${table}"
+      FROM ${tableSql}
       WHERE "Title" ILIKE $1 OR "Description" ILIKE $1 OR "Seller" ILIKE $1
       ORDER BY id DESC
       LIMIT $2 OFFSET $3
