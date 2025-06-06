@@ -1,7 +1,16 @@
-// pages/api/getListingsPaged.js
-import db from "../../lib/db" // your DB connection code
-
 export default async function handler(req, res) {
+    // Add CORS headers:
+    res.setHeader("Access-Control-Allow-Origin", "*") // or a specific domain instead of *
+    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+
+    // Handle preflight requests (OPTIONS):
+    if (req.method === "OPTIONS") {
+        return res.status(200).end()
+    }
+
+    // Then your existing code here:
+
     const page = parseInt(req.query.page || "1", 10)
     const pageSize = parseInt(req.query.pageSize || "15", 10)
     const table = req.query.table || "main"
